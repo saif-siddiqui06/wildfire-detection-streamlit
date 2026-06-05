@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.streamlit/secrets.toml
+uploads/
+*.mp4
+*.avi
+*.mov
+*.mkv
