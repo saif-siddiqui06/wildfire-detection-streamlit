@@ -19,7 +19,11 @@ in uploaded images and sampled video frames.
 
 ## Live Deployment
 
-After deploying on Streamlit Cloud, add the app link here.
+Try the deployed app here:
+
+```text
+https://wildfire-detection-app-dizjzodmvxcwuxlh5usrry.streamlit.app/
+```
 
 ## Project Structure
 
