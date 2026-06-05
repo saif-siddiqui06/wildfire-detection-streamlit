@@ -93,6 +93,22 @@ def analyze_image(image_bgr, model):
     return annotated, detections, summary
 
 
+def draw_live_overlay(image_bgr, summary):
+    colors = {
+        "Safe": (22, 163, 74),
+        "Low": (202, 138, 4),
+        "Medium": (234, 88, 12),
+        "High": (220, 38, 38),
+    }
+    color = colors.get(summary["risk"], (37, 99, 235))
+    label = f"{summary['decision']} | Risk: {summary['risk']} | Conf: {summary.get('max_confidence', 0.0):.0%}"
+
+    output = image_bgr.copy()
+    cv2.rectangle(output, (10, 10), (min(output.shape[1] - 10, 760), 58), (15, 23, 42), -1)
+    cv2.putText(output, label, (22, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.72, color, 2)
+    return output
+
+
 def analyze_video(uploaded_file, model, frame_stride=10, max_frames=80):
     suffix = Path(uploaded_file.name).suffix or ".mp4"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as input_file:
@@ -273,11 +289,82 @@ def video_page(model):
             output_path.unlink(missing_ok=True)
 
 
+def live_camera_page(model):
+    st.subheader("Real-Time Live Fire Detection")
+    st.write(
+        "Use your browser camera for live wildfire monitoring. The app analyzes incoming "
+        "frames and overlays fire/smoke risk directly on the video feed."
+    )
+
+    st.warning(
+        "Cloud note: live camera works through browser WebRTC. If your browser asks for "
+        "camera permission, allow it. For slow devices, increase frame skipping."
+    )
+
+    frame_skip = st.slider(
+        "Analyze every Nth live frame",
+        min_value=1,
+        max_value=10,
+        value=3,
+        help="Higher values reduce CPU load on Streamlit Cloud.",
+    )
+
+    try:
+        import av
+        from streamlit_webrtc import RTCConfiguration, VideoProcessorBase, webrtc_streamer
+    except ImportError:
+        st.error("Live WebRTC dependencies are not installed. Using snapshot fallback.")
+        live_snapshot_fallback(model)
+        return
+
+    class WildfireVideoProcessor(VideoProcessorBase):
+        def __init__(self):
+            self.model = model
+            self.frame_count = 0
+            self.last_frame = None
+
+        def recv(self, frame):
+            image_bgr = frame.to_ndarray(format="bgr24")
+            self.frame_count += 1
+
+            if self.frame_count % frame_skip == 0 or self.last_frame is None:
+                annotated, _, summary = analyze_image(image_bgr, self.model)
+                self.last_frame = draw_live_overlay(annotated, summary)
+
+            return av.VideoFrame.from_ndarray(self.last_frame, format="bgr24")
+
+    rtc_configuration = RTCConfiguration(
+        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    )
+
+    st.info("Click START below to begin live camera detection.")
+    webrtc_streamer(
+        key="wildfire-live-camera",
+        video_processor_factory=WildfireVideoProcessor,
+        rtc_configuration=rtc_configuration,
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True,
+    )
+
+    with st.expander("Fallback: Analyze Camera Snapshot"):
+        live_snapshot_fallback(model)
+
+
+def live_snapshot_fallback(model):
+    snapshot = st.camera_input("Take a camera snapshot")
+    if snapshot is not None:
+        image_bgr = read_image(snapshot)
+        annotated, _, summary = analyze_image(image_bgr, model)
+        render_summary(summary)
+        st.image(bgr_to_rgb(annotated), caption="Detected Snapshot", use_container_width=True)
+
+
 def about_page():
     st.subheader("About This Project")
     st.write(
         "This Streamlit app uses a YOLO object detection model to identify wildfire "
-        "signals such as fire and smoke in uploaded images or sampled video frames."
+        "signals such as fire and smoke in uploaded images, sampled video frames, "
+        "and live browser camera feed."
     )
     st.write(
         "The system is intended as a demonstration and early-warning support tool. "
@@ -303,7 +390,7 @@ def main():
 
     with st.sidebar:
         st.title("Wildfire AI")
-        page = st.radio("Navigation", ["Image Detection", "Video Detection", "About"])
+        page = st.radio("Navigation", ["Image Detection", "Video Detection", "Live Camera Detection", "About"])
         st.divider()
         st.metric("Confidence Threshold", f"{CONFIDENCE_THRESHOLD:.0%}")
         st.caption("Model file: best.pt / last.pt")
@@ -314,6 +401,8 @@ def main():
         image_page(model)
     elif page == "Video Detection":
         video_page(model)
+    elif page == "Live Camera Detection":
+        live_camera_page(model)
     else:
         about_page()
 

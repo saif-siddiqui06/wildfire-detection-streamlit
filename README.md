@@ -8,6 +8,8 @@ in uploaded images and sampled video frames.
 
 - Image upload wildfire detection
 - Video upload with sampled-frame analysis
+- Real-time browser camera detection using WebRTC
+- Camera snapshot fallback mode
 - Annotated detection preview
 - Fire and smoke count summary
 - Risk level classification
@@ -53,5 +55,7 @@ Main file path: app.py
 ## Notes
 
 - Video analysis is sampled for cloud performance.
+- Live camera detection uses the user's browser camera through WebRTC.
+- If WebRTC is blocked by browser/network settings, use the camera snapshot fallback.
 - This project is a demonstration and should not be used as the only source for emergency decisions.
 - Wildfire alerts should always be verified by humans and official emergency services.
